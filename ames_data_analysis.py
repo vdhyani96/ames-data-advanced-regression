@@ -17,8 +17,6 @@ from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 import hdbscan
 
-os.chdir('C:\\Users\\admin\\Desktop\\PostG\\GRE\\Second Take\\Applications\\Univs\\Stony Brook\\Fall 19 Courses\\DSF\\Homework 3\\house-prices-advanced-regression-techniques')
-
 
 # load datasets
 train = pd.read_csv('train.csv')
