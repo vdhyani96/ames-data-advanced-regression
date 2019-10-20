@@ -490,6 +490,14 @@ def permutation_test(x, y):
         scores.append(score)
     return scores
 
+# permutation test without fitting the model
+def permutation_test2(pred, y):
+    scores = []
+    for i in range(1000):
+        y = np.random.permutation(y)
+        score = rmselog(pred, y)
+        scores.append(score)
+    return scores
 
 
 # a. GrLivArea
