@@ -14,6 +14,7 @@ from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestRegressor
 import hdbscan
 
 os.chdir('C:\\Users\\admin\\Desktop\\PostG\\GRE\\Second Take\\Applications\\Univs\\Stony Brook\\Fall 19 Courses\\DSF\\Homework 3\\house-prices-advanced-regression-techniques')
@@ -48,8 +49,17 @@ for col in corr.columns:
 
 
 # Following tables store the pairwise most positive and negative correlations
-print(np.array(most_positive).reshape(14, 3))
-print(np.array(most_negative).reshape(14, 3))    
+most_positive = np.array(most_positive).reshape(14, 3)
+most_negative = np.array(most_negative).reshape(14, 3)
+pos = pd.DataFrame({'Variable':most_positive[:,0], 'MaxCorrelation':most_positive[:,1], 'Correlation':most_positive[:,2]})
+neg = pd.DataFrame({'Variable':most_negative[:,0], 'MinCorrelation':most_negative[:,1], 'Correlation':most_negative[:,2]})
+pos = pos.sort_values('Correlation', ascending=False)
+pos.reset_index(drop=True, inplace=True)
+neg = neg.sort_values('Correlation')
+neg.reset_index(drop=True, inplace=True)
+print(pos)
+print("\n")
+print(neg)     
 
 # GrLivArea (Above grade (ground) living area square feet) has the highest
 # correlation with the SalePrice (target variable) of 0.7086
@@ -180,7 +190,7 @@ d_norml['d_index'] = ((d_norml['d_index'] - d_norml['d_index'].min())/
 
 d_norml['SalePrice'] = train['SalePrice']
 # check correlation between the d_index and SalePrice
-sns.lmplot(data = d_norml[['d_index', 'SalePrice']], x='d_index', y='SalePrice')
+sns.lmplot(data = d_norml[['d_index', 'SalePrice']], x='d_index', y='SalePrice', scatter_kws={'alpha':0.3})
 d_norml[['d_index', 'SalePrice']].corr()
 # 0.80345 - This is even higher than the correlation of all of the individual features!
 
@@ -522,8 +532,75 @@ print(pvalues)
 
 
 ## 9. Build a strong model for Kaggle submission
+# First combine both train and test for common preprocessing
+data = train.iloc[:, :-2].append(test, ignore_index=True)
+# convert all categorical variables into dummy variables
+tempo = pd.get_dummies(data)
+# check for na values
+nacols = tempo.columns[tempo.isna().any()].tolist()
+# 11 columns with na values
+np.sum(tempo[nacols[0]].isna())
+# Many places have just 1 NAs, replace with mean where possible
+tempo[nacols[0]]
+tempo[nacols[0]].value_counts()
+tempo[nacols[1]][tempo[nacols[1]].isna()] = tempo[nacols[1]].median(skipna=True)
+tempo[nacols[2]][tempo[nacols[2]].isna()] = tempo[nacols[2]].mean(skipna=True)
+tempo[nacols[3]][tempo[nacols[3]].isna()] = tempo[nacols[3]].median(skipna=True)
+tempo[nacols[4]][tempo[nacols[4]].isna()] = tempo[nacols[4]].median(skipna=True)
+tempo[nacols[5]][tempo[nacols[5]].isna()] = tempo[nacols[5]].mean(skipna=True)
+tempo[nacols[6]][tempo[nacols[6]].isna()] = tempo[nacols[6]].mean(skipna=True)
+tempo[nacols[7]][tempo[nacols[7]].isna()] = tempo[nacols[7]].median(skipna=True)
+# GarageYrBlt is nan in some places, it could be because in some houses where there is
+# no garage, garage year built is unnecessary. For the purpose of model building and not
+# introducing much noise, I will impute the year with its corresponding YearBuilt date
+# as the date has to be either that or after that date
+tempo[nacols[8]][tempo[nacols[8]].isna()] = tempo['YearBuilt'][tempo[nacols[8]].isna()]
+# GarageCars is also not applicable for the same houses. Can impute 0 values in their place
+tempo[nacols[9]][tempo[nacols[9]].isna()] = 0
+# similarly, the garage area could also be imputed as 0
+tempo[nacols[10]][tempo[nacols[10]].isna()] = 0
+# For LotFrontage, it's possible that there is no linear street connected to the property
+# in that case, LotFrontage value can be imputed as 0
+tempo[nacols[0]][tempo[nacols[0]].isna()] = 0
 
+tempo = tempo.drop(columns='Id')
+# can also include the d_index, first add AgeOfHouse as done earlier
+tempo['AgeOfHouse'] = 2019 - tempo['YearBuilt']
 
+# now can normalize all the variables
+tempo = (tempo - tempo.min()) / (tempo.max() - tempo.min())
+
+tempo['d_index'] = (np.exp(0.7086)*tempo['GrLivArea'] + 
+                        np.exp(0.6234)*tempo['GarageArea'] +
+                        np.exp(0.6136)*tempo['TotalBsmtSF'] +
+                        np.exp(0.6058)*tempo['1stFlrSF'] - 
+                        np.exp(0.624)*tempo['AgeOfHouse'])
+
+tempo['d_index'] = ((tempo['d_index'] - tempo['d_index'].min())/
+                       (tempo['d_index'].max() - tempo['d_index'].min()))
+
+# split the data into train test
+trainData = tempo.iloc[:1460, :]
+testData = tempo.iloc[1460:, :]
+
+# randomForest Regressor
+regr = RandomForestRegressor(n_estimators=500, random_state=519)
+regr.fit(trainData, train['SalePrice'])
+regr.score(trainData, train['SalePrice'])
+# Rsquared = 0.98
+trpred = regr.predict(trainData)
+trscore = rmselog(trpred, train['SalePrice'])
+# 0.0594 
+
+pred = regr.predict(testData)
+
+submission = pd.DataFrame({'Id':list(range(1461, 2920)), 'SalePrice':pred})
+submission.to_csv('submission.csv', index=False)
+
+# Kaggle submission statistics (October 20, 2019):
+# Rank - 2707/4795 (Top 57%)
+# Score - 0.14473 (RMSE of log(price))
+# Number of entries - 3
 
 
 
